@@ -1,6 +1,8 @@
 import cors from "cors";
 import dotenv from "dotenv";
 import express from "express";
+import path from "path";
+import { fileURLToPath } from "url";
 
 import authRoutes from "./routes/auth-routes.js";
 import searchRoutes from "./routes/search-routes.js";
@@ -17,18 +19,23 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const frontendBuildPath = path.resolve(__dirname, "../../frontend/dist");
 
 /* <=== GLOBAL MIDDLEWARE ===> */
 
 /*
  * CORS allows the Vite React frontend to call this backend during local development.
- * The frontend runs on localhost:5173 and Express runs on localhost:5000.
+ * In production, Express serves the React build from the same Render service.
  */
-app.use(
-  cors({
-    origin: "http://localhost:5173",
-  }),
-);
+if (process.env.NODE_ENV !== "production") {
+  app.use(
+    cors({
+      origin: "http://localhost:5173",
+    }),
+  );
+}
 
 /*
  * express.json() lets Express read JSON request bodies.
@@ -62,6 +69,28 @@ app.get("/api/health", (req, res) => {
    */
   return res.status(200).json({ message: "Backend is running." });
 });
+
+/* <=== PRODUCTION FRONTEND ===> */
+
+if (process.env.NODE_ENV === "production") {
+  /*
+   * Render builds the React frontend into frontend/dist.
+   * Express serves those static files in production.
+   */
+  app.use(express.static(frontendBuildPath));
+
+  /*
+   * Any non-API request should return React's index.html.
+   * This allows the deployed frontend to load from the same Render service.
+   */
+  app.use((req, res, next) => {
+    if (req.path.startsWith("/api")) {
+      return next();
+    }
+
+    return res.sendFile(path.join(frontendBuildPath, "index.html"));
+  });
+}
 
 /* <=== SERVER STARTUP ===> */
 
